@@ -21,11 +21,12 @@ from timm.scheduler import create_scheduler
 from timm.optim import create_optimizer
 from timm.utils import NativeScaler, get_state_dict, ModelEma, ApexScaler
 
-from datasets import build_dataset
+from dataset import build_dataset
 from engine import train_one_epoch, evaluate
 from samplers import RASampler
 import models
 import utils
+from data.myloader import fast_collate
 
 try:
     from apex import amp
@@ -225,7 +226,47 @@ def main(args):
             )
     else:
         sampler_train = torch.utils.data.RandomSampler(dataset_train)
+        
+    re_num_splits = 0
+    use_prefetcher = True
+    # if args.resplit:
+    #     # apply RE to second half of batch if no aug split otherwise line up with aug split
+    #     re_num_splits = num_aug_splits or 2
 
+    if collate_fn is None:
+        collate_fn = fast_collate if use_prefetcher else torch.utils.data.dataloader.default_collate
+
+    loader_class = torch.utils.data.DataLoader
+
+    if use_multi_epochs_loader:
+        loader_class = MultiEpochsDataLoader
+
+    loader = loader_class(
+        dataset,
+        batch_size=batch_size,
+        shuffle=sampler is None and is_training,
+        num_workers=num_workers,
+        sampler=sampler,
+        collate_fn=collate_fn,
+        pin_memory=pin_memory,
+        drop_last=is_training,
+    )
+    if use_prefetcher:
+        prefetch_re_prob = re_prob if is_training and not no_aug else 0.
+        loader = PrefetchLoader(
+            loader,
+            mean=mean,
+            std=std,
+            fp16=fp16,
+            re_prob=prefetch_re_prob,
+            re_mode=re_mode,
+            re_count=re_count,
+            re_num_splits=re_num_splits
+        )
+
+
+
+    import torch.utils.data
     data_loader_train = torch.utils.data.DataLoader(
         dataset_train, sampler=sampler_train,
         batch_size=args.batch_size,

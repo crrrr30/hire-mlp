@@ -18,6 +18,8 @@ from .mixup import FastCollateMixup
 
 def fast_collate(batch):
     """ A fast collation function optimized for uint8 images (np array or torch) and int64 targets (labels)"""
+    if isinstance(batch[0], dict):
+        batch = [(b["image"], b["label"]) for b in batch]
     assert isinstance(batch[0], tuple)
     batch_size = len(batch)
     if isinstance(batch[0][0], tuple):

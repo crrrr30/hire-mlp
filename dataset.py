@@ -12,6 +12,8 @@ import torch
 import numpy as np
 import scipy.io
 
+from datasets import Dataset, concatenate_datasets
+
 
 class CarsDataset(torch.utils.data.Dataset):
     def __init__(self, data_dir, train=True, transform=None):
@@ -159,8 +161,11 @@ def build_dataset(is_train, args):
         dataset = datasets.CIFAR10(args.data_path, train=is_train, transform=transform)
         nb_classes = 10
     elif args.data_set == 'IMNET':
-        root = os.path.join(args.data_path, 'train' if is_train else 'val')
-        dataset = datasets.ImageFolder(root, transform=transform)
+        dataset = concatenate_datasets([Dataset.from_file(f"../../imagenet-1k/imagenet-1k-train-{i:05d}-of-00257.arrow") for i in range(257)]) if is_train else concatenate_datasets([Dataset.from_file(f"../../imagenet-1k/imagenet-1k-validation-{i:05d}-of-00013.arrow",) for i in range(13)])
+        def transforms(examples):
+            examples["image"] = [transform(img.convert("RGB")) for img in examples["image"]]
+            return examples
+        dataset.set_transform(transforms)
         nb_classes = 1000
     elif args.data_set == 'INAT':
         dataset = INatDataset(args.data_path, train=is_train, year=2018,
