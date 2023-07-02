@@ -8,6 +8,7 @@
 Train and eval functions used in main.py
 """
 import math
+import time
 import sys
 from typing import Iterable, Optional
 import argparse
@@ -31,14 +32,21 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     criterion.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
+    metric_logger.add_meter('datatime/it', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
+    metric_logger.add_meter('time/it', utils.SmoothedValue(window_size=1, fmt='{value:.4f}'))
+    metric_logger.add_meter('imgs/s', utils.SmoothedValue(window_size=1, fmt='{value:.2f}'))
     header = 'Epoch: [{}]'.format(epoch)
     print_freq = 1 if args.debug else 300
     if args.update_temperature:
         model.module.update_temperature()
+        
+    start = time.time()
 
     for samples, targets in metric_logger.log_every(data_loader, print_freq, header):
         samples = samples.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
+        
+        metric_logger.update(**{'datatime/it': time.time() - start})
 
         if mixup_fn is not None:
             samples, targets = mixup_fn(samples, targets)
@@ -64,8 +72,11 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         if model_ema is not None:
             model_ema.update(model)
 
+        metric_logger.update(**{'time/it': time.time() - start})
         metric_logger.update(loss=loss_value)
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
+        start = time.time()
+        
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
